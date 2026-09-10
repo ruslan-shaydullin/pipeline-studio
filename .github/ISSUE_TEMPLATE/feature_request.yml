@@ -1,0 +1,29 @@
+name: Feature request
+description: Describe a user problem and a verifiable improvement.
+title: '[Feature]: '
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: English and Russian are welcome. Describe the workflow you want to improve before proposing an implementation.
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: What are you trying to achieve, and where does the current workflow fail or take unnecessary effort?
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior
+      description: Describe the interaction and result. Include alternatives or a current workaround if useful.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: How will we know this works?
+      description: Give a concrete scenario and its expected result. Mention existing sessions or saved jobs that must remain compatible.
+    validations:
+      required: true

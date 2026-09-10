@@ -11,7 +11,8 @@ English · [Русский](README.ru.md)
 - Projects, folders and reusable pipeline templates, saved locally.
 - Sequential stages with separate sessions and automatic handoff of results and files.
 - Live session messages, command output, diffs, approval requests and model selection.
-- Repeated runs, retries from a selected stage, and continuation with newly appended stages.
+- Repeated runs, retries from a selected stage, and continuation from completed results with template stages or a manual next step.
+- Deep pipeline reviews by Codex: goal coverage, evidence from recent runs, revised prompts, explicit apply and undo.
 - Optional planners that create up to five following stages; save an expanded plan as a reusable job.
 - Access profiles for the entire pipeline, with a per-run override.
 - Job export/import, conflict detection between tabs and backup recovery.
@@ -44,9 +45,19 @@ Choose **«Исправить issue» → «Новый запуск»**. The lau
 
 For your own task, enter a project directory or start without files. Each stage starts in a separate working copy. Results and files from the previous stage are handed over automatically. Click a stage to inspect its session or send a message.
 
-**Continue vs. rerun:** after a run finishes, append a stage to the job and choose **«Продолжить»** to reuse completed results. **«Новый запуск»** starts from the beginning. **«Повторить отсюда»** creates a new attempt at an existing stage and reruns later stages. Earlier attempts remain available.
+**Continue vs. rerun:** after a run finishes, choose **«Продолжить»** to reuse completed results. Append stages to the job or describe a manual next step in the preview. A manual step belongs to that run and does not change the template. **«Новый запуск»** starts from the beginning. **«Повторить отсюда»** creates a new attempt at an existing stage and reruns later stages. Earlier attempts remain available.
+
+If completed prompts or planner settings changed, the preview explains that continuation will reuse their old results. Reordered or removed template stages can still be followed by a manual step. New stages receive the original run task, handoff and files; retries and continuations retain earlier attempts.
 
 To let a stage create more stages, enable **«Может создавать этапы»** beneath its prompt. Generated stages cannot create more stages themselves. The current limit is 50 stages per run.
+
+## Pipeline assistant
+
+Open **«Помощник»**, describe the end goal and choose **«Глубоко проверить»**. A separate Codex session with high reasoning effort reviews every stage prompt and summaries from up to three recent runs. It checks goal coverage, missing steps, redundant work, handoff contracts, completion criteria, dynamic stage creation and publication requirements.
+
+The review shows concrete findings, unresolved decisions and a complete proposed pipeline. Expand a stage to compare its full new prompt with the original. **«Применить к джобе»** saves the proposal to the template; **«Отменить применение»** restores its previous state. Neither action starts a run or changes access permissions. If someone edits the job after analysis or application, stale apply/undo requests are rejected to preserve those edits.
+
+The assistant reviews supplied instructions and result summaries; it does not verify repository code or external facts. It runs read-only with network disabled, uses your Codex account limits and can be stopped independently of stage execution. Closing the dialog does not cancel it. The last 20 reviews persist locally; interrupted reviews must be restarted. Long history fields are clipped and very large review inputs are rejected explicitly.
 
 ## Access profiles
 
@@ -66,6 +77,7 @@ Each run snapshots its profile. Editing a job does not change an active session.
 
 - `.pipeline-data/workspace.json`: projects, folders and job templates, with an atomic-write backup.
 - `.pipeline-data/runs.json`: run history, messages, results and Codex session IDs.
+- `.pipeline-data/reviews.json`: assistant reviews, proposals and their original template snapshots.
 - `.pipeline-data/workspaces/<run>/<attempt>`: working files for each attempt.
 
 These files are excluded from Git. Export/import transfers job templates, not session history or working files. Back up the entire data directory when moving machines. Avoid placing large development workspaces in folders subject to cloud offloading.
@@ -99,6 +111,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development notes.
 
 ## Current limits
 
-One active agent at a time; additional runs are queued. Pipelines are linear: no branching, parallel stages or visual condition editor yet. The pipeline assistant currently performs local structural checks, without a model. Codex is the only connected executor. Message drafts are tab-local and do not survive a page reload. Working directories are retained until you manage them yourself.
+One active pipeline stage at a time; additional runs are queued. One separate assistant review may run alongside it. Pipelines are linear: no branching, parallel stages or visual condition editor yet. Codex is the only connected executor. Message drafts are tab-local and do not survive a page reload. Working directories are retained until you manage them yourself.
 
 An independent project, not an official OpenAI product. Licensed under [MIT](LICENSE).

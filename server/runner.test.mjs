@@ -1,5 +1,7 @@
 import test from 'node:test';
 import {
+  canContinueRun,
+  manualContinuation,
   continuationPlan,
   continuationToken,
   recentRun,
@@ -567,14 +569,14 @@ test('stale or conflicting continuation previews cannot change a completed prefi
   changed[0].prompt = 'Changed task';
   assert.throws(
     () => runner.extend(run.id, extension(run, changed)),
-    /Порядок или промпты/,
+    /сохранённых результатов/,
   );
   const other = extension(run, job().stages);
   other.pipeline.id = 'other';
   assert.throws(() => runner.extend(run.id, other), /другой джобы/);
   assert.throws(
     () => runner.extend(run.id, extension(run, job().stages.slice(0, 1))),
-    /Новых этапов/,
+    /следующий шаг/,
   );
   assert.equal(JSON.stringify(run), initial);
   const first = extension(run, job().stages);
@@ -688,8 +690,8 @@ test('changing creation capability or overriding a completed stage cannot reuse 
   const stages = job().stages;
   stages[0].allowStageCreation = true;
   assert.equal(
-    continuationPlan(run, { id: run.pipelineId, stages }).eligible,
-    false,
+    continuationPlan(run, { id: run.pipelineId, stages }).changes.length,
+    1,
   );
   const request = extension(run, job().stages);
   request.overrides = { 'stage-0': 'Override completed' };
@@ -857,4 +859,107 @@ test('continuation changes access explicitly, preserves completed attempts and f
   runner.extend(run.id, next);
   await settle(() => runner.current(run)?.turnId && !runner.busy);
   assert.equal(run.accessMode, 'network');
+});
+
+test('changed completed prompts and planner flags can be explicitly reused without restarting them', async (t) => {
+  const { runner, run } = await oneStageDone(t);
+  const prefix = structuredClone(run.stages[0]);
+  const stages = job().stages;
+  stages[0].allowStageCreation = true;
+  stages[0].prompt = 'Changed future instruction';
+  const request = extension(run, stages);
+  assert.equal(continuationPlan(run, request.pipeline).changes.length, 1);
+  assert.throws(
+    () => runner.extend(run.id, request),
+    /сохранённых результатов/,
+  );
+  runner.extend(run.id, { ...request, reuseCompleted: true });
+  await ready(runner, run, 1);
+  assert.deepEqual(run.stages[0], prefix);
+  assert.equal(run.stages[1].attempts.length, 1);
+});
+test('a completed pipeline with no new template stage accepts a manual next step', async (t) => {
+  const { runner, run } = await oneStageDone(t);
+  assert.equal(canContinueRun(run, run.pipelineId), true);
+  const template = {
+    id: run.pipelineId,
+    name: run.name,
+    stages: [{ ...job().stages[0], id: 'reordered' }],
+  };
+  const pipeline = manualContinuation(run, template, {
+    ...job().stages[1],
+    prompt: 'Use the saved result',
+  });
+  runner.extend(run.id, {
+    mutationId: 'manual-next',
+    manualStep: true,
+    expectedState: continuationToken(run),
+    pipeline,
+  });
+  await ready(runner, run, 1);
+  assert.equal(run.stages[0].attempts.length, 1);
+  assert.match(runner.current(run).input, /Handoff from this attempt/);
+  assert.equal(template.stages.length, 1);
+});
+test('legacy retry instructions are not mistaken for changes to the template', async (t) => {
+  const { runner, run } = await oneStageDone(t);
+  delete run.stages[0].templatePrompt;
+  run.stages[0].prompt += '\nA run-only retry instruction';
+  assert.equal(
+    continuationPlan(run, { id: run.pipelineId, stages: job().stages }).changes
+      .length,
+    0,
+  );
+  runner.extend(run.id, extension(run, job().stages));
+  await ready(runner, run, 1);
+  assert.equal(run.stages[0].attempts.length, 1);
+});
+test('an initially empty appended prompt can be completed in the continuation preview', async (t) => {
+  const { runner, run } = await oneStageDone(t);
+  const stages = job().stages;
+  stages[1].prompt = '';
+  const request = extension(run, stages);
+  request.overrides = { 'stage-1': 'Use the ready result' };
+  runner.extend(run.id, request);
+  await ready(runner, run, 1);
+  assert.equal(run.stages[1].prompt, 'Use the ready result');
+  assert.equal(run.stages[1].templatePrompt, '');
+});
+
+test('manual, template, and manual continuation keep all prior sessions and their files', async (t) => {
+  const { runner, run } = await oneStageDone(t);
+  const template = { id: run.pipelineId, name: run.name, stages: job().stages };
+  const first = structuredClone(run.stages[0]);
+  function addManual(id) {
+    runner.extend(run.id, {
+      mutationId: `request-${id}`,
+      manualStep: true,
+      expectedState: continuationToken(run),
+      pipeline: manualContinuation(run, template, {
+        ...job().stages[1],
+        id,
+        prompt: 'Continue with the saved files',
+      }),
+    });
+  }
+  addManual('manual-first');
+  await ready(runner, run, 1);
+  assert.equal(run.stages[1].addedManually, true);
+  await complete(runner, runner.current(run));
+  const beforeTemplate = structuredClone(run.stages);
+  runner.extend(
+    run.id,
+    extension(run, template.stages, 'template-after-manual'),
+  );
+  await ready(runner, run, 2);
+  assert.deepEqual(run.stages.slice(0, 2), beforeTemplate);
+  assert.equal(run.stages[2].id, 'stage-1');
+  assert.match(runner.current(run).input, /Handoff from this attempt/);
+  await complete(runner, runner.current(run));
+  const beforeManual = structuredClone(run.stages);
+  addManual('manual-last');
+  await ready(runner, run, 3);
+  assert.deepEqual(run.stages.slice(0, 3), beforeManual);
+  assert.deepEqual(run.stages[0], first);
+  assert.equal(run.stages[3].addedManually, true);
 });

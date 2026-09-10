@@ -1,5 +1,6 @@
 'use client';
 import { PipelineAccess } from './access-settings';
+import { PipelineAssistant } from './assistant-panel';
 
 import {
   useEffect,
@@ -14,10 +15,8 @@ import {
   ArrowDown,
   ArrowLeft,
   ArrowRight,
-  ArrowUpRight,
   Bot,
   Check,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
   CircleHelp,
@@ -36,7 +35,6 @@ import {
   MoreHorizontal,
   Play,
   Plus,
-  ScanLine,
   ShieldCheck,
   Sparkles,
   Square,
@@ -60,13 +58,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from '@/components/ui/sheet';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -93,7 +84,7 @@ import { useWorkspace, flushWorkspace } from '@/lib/use-workspace';
 import { WorkspaceStorage } from './workspace-storage';
 import { Switch } from '@/components/ui/switch';
 import { useRunner, runnerAction, type AgentRun } from '@/lib/use-runner';
-import { continuationPlan, recentRun } from '@/lib/continuation.mjs';
+import { canContinueRun, recentRun } from '@/lib/continuation.mjs';
 import { RunsPanel, RunLauncher } from './runs-panel';
 
 type ToastOptions = {
@@ -274,7 +265,6 @@ export default function Home() {
     'research',
   ]);
   const [assistant, setAssistant] = useState(false);
-  const [checked, setChecked] = useState(false);
   const [zoom, setZoom] = useState(100);
   const [canvasWidth, setCanvasWidth] = useState(1000);
   const [dialog, setDialog] = useState<null | {
@@ -325,7 +315,7 @@ export default function Home() {
   }, [view]);
   const runs = runner.runs.filter((r) => r.pipelineId === pipeline.id);
   const latest: AgentRun | undefined = recentRun(runs);
-  const continuation = runs.find((r) => continuationPlan(r, pipeline).eligible);
+  const continuation = runs.find((r) => canContinueRun(r, pipeline.id));
   const active = runs.find((r) =>
     ['queued', 'running', 'waiting_approval', 'waiting_user'].includes(
       r.status,
@@ -342,7 +332,6 @@ export default function Home() {
         p.id === pipeline.id ? { ...p, ...patch } : p,
       ),
     }));
-    setChecked(false);
   }
   function patchStage(patch: Partial<Stage>) {
     patchPipeline({
@@ -366,7 +355,6 @@ export default function Home() {
     setStageId(p.stages[0]?.id ?? '');
     setView('runs');
     setDetail('prompt');
-    setChecked(false);
   }
   function addStage(at: number, values?: { name: string; prompt: string }) {
     if (locked || pipeline.stages.length >= 50) return '';
@@ -539,7 +527,6 @@ export default function Home() {
       setStageId('');
       setInspectorOpen(false);
       setView('editor');
-      setChecked(false);
       setCollapsed((current) =>
         current.filter((key) => key !== dialog.parentId),
       );
@@ -549,26 +536,6 @@ export default function Home() {
   function status(id: string) {
     return latest?.stages.find((s) => s.id === id)?.status || 'idle';
   }
-  const issues = pipeline.stages.flatMap((s, i) => [
-    ...(!s.prompt.trim()
-      ? [
-          {
-            id: s.id,
-            title: `Нет промпта: ${s.name}`,
-            text: 'Опиши задачу и ожидаемый результат этапа.',
-          },
-        ]
-      : []),
-    ...(pipeline.stages.slice(0, i).some((other) => other.name === s.name)
-      ? [
-          {
-            id: s.id,
-            title: 'Одинаковые названия',
-            text: `Уточни название «${s.name}», чтобы различать этапы.`,
-          },
-        ]
-      : []),
-  ]);
   usePipelineTools(pipeline, locked, addStage);
 
   return (
@@ -751,7 +718,6 @@ export default function Home() {
                 className="assistant-button"
                 onClick={() => {
                   setAssistant(true);
-                  setChecked(false);
                 }}
               >
                 <Sparkles size={16} />
@@ -1301,103 +1267,16 @@ export default function Home() {
             }}
           />
         )}
-        <Sheet open={assistant} onOpenChange={setAssistant}>
-          <SheetContent className="assistant-sheet">
-            <SheetHeader className="assistant-header">
-              <Sparkles size={22} />
-              <SheetTitle>Помощник по пайплайну</SheetTitle>
-              <SheetDescription>
-                Посмотрим, всё ли готово к запуску.
-              </SheetDescription>
-            </SheetHeader>
-            <div className="assistant-body">
-              <div className="assistant-context">
-                <GitBranch size={16} />
-                <span>{pipeline.name}</span>
-                <span>{pipeline.stages.length} этапа</span>
-              </div>
-              <div className="assistant-message">
-                <span className="agent-avatar">
-                  <Sparkles size={17} />
-                </span>
-                <div>
-                  <strong>Начнём со структуры</strong>
-                  <p>
-                    Я могу проверить пустые промпты и повторяющиеся названия в
-                    этом пайплайне.
-                  </p>
-                  <span className="assistant-disclosure">
-                    Локальная проверка · ИИ не подключён
-                  </span>
-                </div>
-              </div>
-              <button
-                className="primary-button full-width"
-                onClick={() => setChecked(true)}
-              >
-                <ScanLine size={16} />
-                Проверить пайплайн
-              </button>
-              {checked && (
-                <div aria-live="polite">
-                  {!pipeline.stages.length ? (
-                    <div className="advice-card">
-                      <strong>Добавь первый этап</strong>
-                      <p>
-                        Пайплайн пока пуст. Начни с задачи для одного агента.
-                      </p>
-                      <button
-                        onClick={() => {
-                          setAssistant(false);
-                          setView('editor');
-                          addStage(0);
-                        }}
-                      >
-                        Добавить этап
-                        <ArrowRight size={14} />
-                      </button>
-                    </div>
-                  ) : issues.length ? (
-                    issues.map((issue, i) => (
-                      <div className="advice-card" key={`${issue.id}-${i}`}>
-                        <strong>{issue.title}</strong>
-                        <p>{issue.text}</p>
-                        <button
-                          onClick={() => {
-                            setStageId(issue.id);
-                            setInspectorOpen(true);
-                            setView('editor');
-                            setDetail('prompt');
-                            setAssistant(false);
-                          }}
-                        >
-                          Открыть этап
-                          <ArrowUpRight size={14} />
-                        </button>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="check-passed">
-                      <CheckCircle2 size={22} />
-                      <h3>Базовая структура в порядке</h3>
-                      <p>
-                        У всех этапов есть инструкции и уникальные названия.
-                        Можно попробовать демо-запуск.
-                      </p>
-                    </div>
-                  )}
-                </div>
-              )}
-              <div className="assistant-future">
-                <MessageSquare size={17} />
-                <p>
-                  Здесь можно будет обсуждать весь процесс и улучшать промпты
-                  вместе с ИИ.
-                </p>
-              </div>
-            </div>
-          </SheetContent>
-        </Sheet>
+        {assistant && (
+          <PipelineAssistant
+            key={pipeline.id}
+            open={assistant}
+            onOpenChange={setAssistant}
+            pipeline={pipeline}
+            runner={runner}
+            locked={locked}
+          />
+        )}
         <Dialog
           open={!!dialog}
           onOpenChange={(open) => {

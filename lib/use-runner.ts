@@ -1,4 +1,5 @@
 'use client';
+import type { PipelineReview } from './advisor-types';
 import { useEffect, useState } from 'react';
 import type { AccessMode } from './pipeline';
 
@@ -69,6 +70,7 @@ export type Attempt = {
   } | null;
 };
 export type RunStage = {
+  addedManually?: boolean;
   agent?: string;
   templatePrompt?: string;
   allowStageCreation?: boolean;
@@ -105,6 +107,8 @@ export type AgentRun = {
   archivedStages?: RunStage[];
 };
 export type RunnerState = {
+  advisorAvailable?: boolean;
+  reviews?: PipelineReview[];
   accessProfiles?: boolean;
   workspaceRevision?: number;
   workspaceEpoch?: string | null;

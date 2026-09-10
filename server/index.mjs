@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CodexClient } from './codex.mjs';
 import { Runner } from './runner.mjs';
+import { Advisor } from './advisor.mjs';
 import { WorkspaceStore } from './workspace.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -17,10 +18,18 @@ const runner = new Runner({
     process.env.PIPELINE_DATA_DIR || path.join(root, '.pipeline-data'),
   ),
 });
+const advisor = new Advisor({
+  dataDir,
+  workspace,
+  runner,
+  clientFactory: () => new CodexClient(),
+});
 const streams = new Set();
 const publicState = () => ({
   ...runner.state(),
   accessProfiles: true,
+  advisorAvailable: true,
+  reviews: advisor.list(),
   examplePath: path.join(root, 'examples/issue-lab'),
   workspaceRevision: workspace.read().revision,
   workspaceEpoch: workspace.read().epoch,
@@ -36,6 +45,7 @@ const broadcast = () => {
 };
 workspace.on('change', broadcast);
 runner.on('change', broadcast);
+advisor.on('change', broadcast);
 function json(response, status, value) {
   response.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
@@ -112,6 +122,21 @@ const server = http.createServer(async (request, response) => {
       });
       return;
     }
+    if (request.method === 'POST' && route === '/reviews')
+      return json(response, 201, advisor.create(await body(request)));
+    const reviewMatch = route.match(
+      /^\/reviews\/([a-f0-9-]+)\/(apply|undo|cancel)$/,
+    );
+    if (request.method === 'POST' && reviewMatch) {
+      const [, id, action] = reviewMatch;
+      return json(
+        response,
+        200,
+        action === 'cancel'
+          ? advisor.cancel(id)
+          : advisor.apply(id, action === 'undo'),
+      );
+    }
     if (request.method === 'POST' && route === '/runs')
       return json(response, 201, await runner.create(await body(request)));
     const match = route.match(
@@ -142,6 +167,7 @@ server.listen(port, '127.0.0.1', () => {
 });
 for (const signal of ['SIGINT', 'SIGTERM'])
   process.once(signal, () => {
+    advisor.shutdown();
     runner.shutdown();
     for (const response of streams) response.end();
     server.close();

@@ -1,6 +1,10 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID, createHash } from 'node:crypto';
-import { continuationPlan, continuationToken } from '../lib/continuation.mjs';
+import {
+  continuationPlan,
+  continuationToken,
+  templatePrompt,
+} from '../lib/continuation.mjs';
 import { normalizeAccessMode, codexAccess } from '../lib/access.mjs';
 import {
   mkdirSync,
@@ -856,7 +860,15 @@ export class Runner extends EventEmitter {
   }
   extend(
     runId,
-    { pipeline, expectedState, mutationId, overrides = {}, accessMode },
+    {
+      pipeline,
+      expectedState,
+      mutationId,
+      overrides = {},
+      accessMode,
+      reuseCompleted = false,
+      manualStep = false,
+    },
   ) {
     const run = this.find(runId);
     if (
@@ -867,7 +879,14 @@ export class Runner extends EventEmitter {
       throw new Error('Нужен идентификатор продолжения');
     const hash = createHash('sha256')
       .update(
-        JSON.stringify({ pipeline, expectedState, overrides, accessMode }),
+        JSON.stringify({
+          pipeline,
+          expectedState,
+          overrides,
+          accessMode,
+          ...(reuseCompleted ? { reuseCompleted } : {}),
+          ...(manualStep ? { manualStep } : {}),
+        }),
       )
       .digest('hex');
     const receipt = run.continuations?.find((c) => c.id === mutationId);
@@ -885,9 +904,18 @@ export class Runner extends EventEmitter {
     const nextAccessMode = normalizeAccessMode(
       accessMode === undefined ? run.accessMode : accessMode,
     );
-    validateJob({ ...pipeline, pipelineId: pipeline?.id, task: run.task });
-    const plan = continuationPlan(run, pipeline);
+    const effective = {
+      ...pipeline,
+      stages: pipeline?.stages?.map((s) => ({
+        ...s,
+        prompt: overrides?.[s.id] ?? s.prompt,
+      })),
+    };
+    validateJob({ ...effective, pipelineId: pipeline?.id, task: run.task });
+    const plan = continuationPlan(run, effective);
     if (!plan.eligible) throw new Error(plan.reason);
+    if (manualStep && (manualStep !== true || plan.added.length !== 1))
+      throw new Error('Продолжение вручную должно содержать один новый этап');
     if (
       !overrides ||
       typeof overrides !== 'object' ||
@@ -901,6 +929,10 @@ export class Runner extends EventEmitter {
       )
     )
       throw new Error('Уточнять можно только инструкции новых этапов');
+    if (plan.changes.length && reuseCompleted !== true)
+      throw new Error(
+        'Подтверди использование сохранённых результатов изменённых этапов',
+      );
     const last = plan.reused.at(-1);
     const lastAttempt = last.attempts.find(
       (a) => a.id === last.activeAttemptId,
@@ -922,9 +954,11 @@ export class Runner extends EventEmitter {
     };
     const added = plan.added.map((s) => ({
       id: s.id,
+      ...(manualStep ? { addedManually: true } : {}),
       name: s.name,
       prompt: overrides[s.id] ?? s.prompt,
-      templatePrompt: s.prompt,
+      templatePrompt: pipeline.stages.find((original) => original.id === s.id)
+        .prompt,
       agent: s.agent || 'codex',
       appearance: s.appearance ?? 0,
       allowStageCreation: s.allowStageCreation === true,
@@ -989,6 +1023,9 @@ export class Runner extends EventEmitter {
     run.stages = run.stages.filter((s) => !replaced.includes(s));
     run.generation = (run.generation || 0) + 1;
     const restartIndex = run.stages.findIndex((s) => s.id === stageId);
+    run.stages[restartIndex].templatePrompt = templatePrompt(
+      run.stages[restartIndex],
+    );
     run.stages[restartIndex].prompt = prompt;
     for (const stage of run.stages.slice(restartIndex)) {
       stage.status = 'idle';

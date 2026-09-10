@@ -1367,3 +1367,335 @@
     display: none;
   }
 }
+
+.continuation-changes {
+  border-left: 2px solid #c7a16b;
+  padding: 9px 14px;
+  margin: 14px 0;
+  font-size: 12px;
+  color: #68583f;
+}
+.continuation-changes p {
+  margin-top: 5px;
+  line-height: 1.6;
+}
+.pipeline-assistant {
+  width: min(900px, calc(100vw - 32px));
+  max-width: 900px !important;
+  max-height: 92dvh;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column;
+  gap: 0 !important;
+  overflow: hidden;
+  border-radius: 22px;
+}
+.advisor-header {
+  padding: 28px 34px 23px;
+  border-bottom: 1px solid #eaecee;
+  flex-shrink: 0;
+}
+.advisor-header h2 {
+  font-size: 24px;
+  letter-spacing: -0.7px;
+  font-weight: 550;
+  margin-top: 12px;
+}
+.advisor-header p {
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 650px;
+  color: #83878c;
+}
+.advisor-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #697585;
+  font-size: 12px;
+  padding-right: 25px;
+}
+.advisor-scroll {
+  overflow-y: auto;
+  padding: 26px 34px 0;
+  min-height: 0;
+}
+.advisor-brief {
+  padding-bottom: 25px;
+}
+.advisor-brief textarea {
+  background: #fafbfc;
+}
+.advisor-options {
+  margin-top: 14px;
+  font-size: 12px;
+  color: #707780;
+}
+.advisor-options > summary {
+  cursor: pointer;
+}
+.advisor-options[open] {
+  display: grid;
+  gap: 12px;
+}
+.advisor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 15px;
+  margin-top: 22px;
+}
+.advisor-actions > span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #899098;
+  font-size: 11px;
+}
+.advisor-progress {
+  padding: 22px 0 30px;
+  display: flex;
+  align-items: flex-start;
+  gap: 13px;
+  color: #516584;
+}
+.advisor-progress p {
+  color: #7e8793;
+  margin-top: 7px;
+  line-height: 1.7;
+  font-size: 13px;
+}
+.advisor-progress strong {
+  font-size: 14px;
+  font-weight: 500;
+}
+.advisor-verdict {
+  border-top: 1px solid #e9ecef;
+  padding: 26px 0;
+}
+.advisor-verdict-label {
+  display: inline-block;
+  font-size: 12px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  color: #8b6233;
+  background: #fbf3e7;
+}
+.advisor-verdict-label.ready {
+  color: #487164;
+  background: #edf5f1;
+}
+.advisor-verdict-label.blocked {
+  color: #9b5c5c;
+  background: #faf0ef;
+}
+.advisor-verdict > p {
+  margin: 14px 0 10px;
+  font-size: 15px;
+  line-height: 1.75;
+  color: #424b54;
+  white-space: pre-wrap;
+}
+.advisor-verdict small {
+  color: #8d959e;
+  font-size: 11px;
+}
+.advisor-findings h3,
+.advisor-assumptions h3,
+.advisor-proposal h3 {
+  font-size: 15px;
+  font-weight: 550;
+  color: #3b434c;
+}
+.advisor-finding {
+  display: flex;
+  gap: 16px;
+  border-bottom: 1px solid #edf0f2;
+  padding: 20px 0;
+}
+.advisor-finding > span {
+  color: #9aa4b0;
+  font-size: 12px;
+  padding-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.advisor-finding.critical > span {
+  color: #b46a65;
+}
+.advisor-finding h4 {
+  font-size: 14px;
+  font-weight: 500;
+}
+.advisor-finding p {
+  margin-top: 7px;
+  font-size: 13px;
+  line-height: 1.75;
+  color: #757d86;
+  white-space: pre-wrap;
+}
+.advisor-finding .advisor-recommendation {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  color: #526b87;
+}
+.advisor-recommendation svg {
+  flex-shrink: 0;
+}
+.advisor-assumptions {
+  margin: 25px 0;
+  padding: 17px 21px;
+  border-radius: 12px;
+  background: #faf8f3;
+}
+.advisor-assumptions ul {
+  list-style: disc;
+  padding-left: 18px;
+  margin-top: 10px;
+  color: #85765e;
+  font-size: 13px;
+  line-height: 1.75;
+}
+.advisor-assumptions li + li {
+  margin-top: 7px;
+}
+.advisor-proposal {
+  margin-top: 30px;
+}
+.advisor-section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.advisor-section-title > span {
+  font-size: 12px;
+  color: #8c949d;
+}
+.advisor-proposed-goal {
+  margin: 14px 0 20px;
+  color: #747f8a;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.advisor-stage {
+  border-top: 1px solid #e8edf1;
+}
+.advisor-stage > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 17px 0;
+  cursor: pointer;
+}
+.advisor-stage-number {
+  width: 29px;
+  height: 29px;
+  display: grid;
+  place-items: center;
+  background: #f0f3f8;
+  color: #7c8daa;
+  border: 1px solid #e2e8f0;
+  border-radius: 50%;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.advisor-stage strong {
+  font-size: 14px;
+  font-weight: 500;
+}
+.advisor-stage small {
+  margin-left: auto;
+  font-size: 11px;
+  color: #8b98a9;
+  white-space: nowrap;
+}
+.advisor-stage > p {
+  color: #7a8590;
+  font-size: 12px;
+  line-height: 1.7;
+  padding: 0 0 14px 41px;
+}
+.advisor-prompt {
+  background: #f6f8fa;
+  padding: 17px 20px;
+  border-radius: 10px;
+  margin: 0 0 16px 41px;
+}
+.advisor-prompt > span {
+  font-size: 11px;
+  color: #8190a0;
+}
+.advisor-stage pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.8;
+  color: #5f6d7a;
+  margin-top: 10px;
+}
+.advisor-old-prompt {
+  margin: 0 0 22px 41px;
+  color: #98a0a8;
+  font-size: 11px;
+}
+.advisor-old-prompt summary {
+  cursor: pointer;
+}
+.advisor-removed {
+  font-size: 12px;
+  color: #a3857f;
+  padding: 8px 0;
+}
+.advisor-apply {
+  position: sticky;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.97);
+  border-top: 1px solid #e5eaf0;
+  padding: 20px 0;
+  margin-top: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+.advisor-apply p {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #818c98;
+  max-width: 440px;
+}
+.advisor-apply p svg {
+  display: inline;
+  margin-right: 5px;
+}
+@media (max-width: 650px) {
+  .advisor-header {
+    padding: 24px 20px 18px;
+  }
+  .advisor-header h2 {
+    font-size: 21px;
+  }
+  .advisor-scroll {
+    padding: 20px 20px 0;
+  }
+  .advisor-actions,
+  .advisor-apply {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .advisor-actions > span {
+    font-size: 10px;
+  }
+  .advisor-apply .primary-button,
+  .advisor-actions .primary-button {
+    justify-content: center;
+  }
+  .advisor-prompt {
+    margin-left: 0;
+  }
+  .advisor-stage > p {
+    padding-left: 0;
+  }
+}

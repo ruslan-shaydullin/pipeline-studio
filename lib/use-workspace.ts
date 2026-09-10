@@ -112,6 +112,7 @@ export function useWorkspace(
     state,
   ] as const;
 }
+export const refreshWorkspace = () => getClient().connect();
 export const flushWorkspace = () => getClient().flush();
 export const importWorkspace = (value: unknown) =>
   getClient().importData(value);

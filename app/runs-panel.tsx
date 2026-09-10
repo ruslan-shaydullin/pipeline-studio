@@ -53,6 +53,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import {
+  canContinueRun,
+  manualContinuation,
   continuationPlan,
   continuationToken,
   recentRun,
@@ -272,9 +274,7 @@ export function RunLauncher({
   preferredRunId?: string | null;
 }) {
   const [snapshot] = useState(() => structuredClone(pipeline));
-  const candidates = runner.runs.filter(
-    (r) => continuationPlan(r, snapshot).eligible,
-  );
+  const candidates = runner.runs.filter((r) => canContinueRun(r, snapshot.id));
   const [baseId, setBaseId] = useState(
     () =>
       candidates.find((r) => r.id === preferredRunId)?.id ||
@@ -284,7 +284,13 @@ export function RunLauncher({
   const [mode, setMode] = useState<'continue' | 'new'>(() =>
     baseId ? 'continue' : 'new',
   );
-  const [overrides, setOverrides] = useState<Record<string, string>>({});
+  const [drafts, setDrafts] = useState<Record<string, Record<string, string>>>(
+    {},
+  );
+  const overrides = drafts[baseId] || {};
+  const setOverrides = (
+    update: (old: Record<string, string>) => Record<string, string>,
+  ) => setDrafts((old) => ({ ...old, [baseId]: update(old[baseId] || {}) }));
   const [operation, setOperation] = useState<{
     signature: string;
     id: string;
@@ -293,7 +299,28 @@ export function RunLauncher({
   const [accessMode, setAccessMode] = useState<AccessMode>(
     snapshot.accessMode ?? base?.accessMode ?? 'supervised',
   );
-  const plan = base ? continuationPlan(base, snapshot) : null;
+  const templatePlan = base ? continuationPlan(base, snapshot) : null;
+  const [manual, setManual] = useState(() => !templatePlan?.added.length);
+  const [nextStep, setNextStep] = useState(() => ({
+    id: crypto.randomUUID(),
+    name: 'Следующий шаг',
+    prompt: '',
+    agent: 'codex',
+  }));
+  const continuedPipeline: Pipeline =
+    base && manual ? manualContinuation(base, snapshot, nextStep) : snapshot;
+  const plan = base
+    ? continuationPlan(base, {
+        ...continuedPipeline,
+        stages: continuedPipeline.stages.map((s) => ({
+          ...s,
+          prompt:
+            !manual && templatePlan?.added.some((added) => added.id === s.id)
+              ? (overrides[s.id] ?? s.prompt)
+              : s.prompt,
+        })),
+      })
+    : null;
   const applied = base?.continuations?.some((c) => c.id === operation?.id);
   const previous = runner.runs.find(
     (r) => r.pipelineId === snapshot.id && r.status === 'done',
@@ -332,7 +359,9 @@ export function RunLauncher({
               'Этот результат уже изменился. Открой продолжение заново',
           );
         const value = {
-          pipeline: snapshot,
+          pipeline: continuedPipeline,
+          reuseCompleted: !!plan.changes.length,
+          manualStep: manual,
           accessMode,
           overrides: Object.fromEntries(
             plan.added
@@ -437,6 +466,16 @@ export function RunLauncher({
                       ...old,
                       [selected.id]: continuationToken(selected),
                     }));
+                  if (selected)
+                    setManual(
+                      !continuationPlan(selected, snapshot).added.length,
+                    );
+                  setNextStep({
+                    id: crypto.randomUUID(),
+                    name: 'Следующий шаг',
+                    prompt: '',
+                    agent: 'codex',
+                  });
                   setBaseId(String(v));
                   setError('');
                 }}
@@ -475,7 +514,7 @@ export function RunLauncher({
                 <p className="session-notice">
                   Продолжение уже запущено. Открой его сессию.
                 </p>
-              ) : plan?.eligible ? (
+              ) : plan?.reused.length ? (
                 <>
                   <div className="continuation-label">
                     Используем готовый результат
@@ -497,6 +536,49 @@ export function RunLauncher({
                     </details>
                   ))}
                   <div className="continuation-label">Выполним дальше</div>
+                  {templatePlan?.added.length ? (
+                    <button
+                      type="button"
+                      className="text-button"
+                      disabled={busy}
+                      onClick={() => setManual(!manual)}
+                    >
+                      {manual
+                        ? 'Взять новые этапы из джобы'
+                        : 'Описать другой следующий шаг'}
+                    </button>
+                  ) : null}
+                  {manual && (
+                    <>
+                      <p className="field-hint">
+                        Новый шаг добавится к этому запуску. Готовые результаты
+                        сохранятся, шаблон джобы не изменится.
+                      </p>
+                      <label className="run-field">
+                        Название следующего шага
+                        <input
+                          disabled={busy}
+                          value={nextStep.name}
+                          maxLength={160}
+                          onChange={(e) =>
+                            setNextStep({ ...nextStep, name: e.target.value })
+                          }
+                        />
+                      </label>
+                    </>
+                  )}
+                  {!!plan.changes.length && (
+                    <div className="continuation-changes">
+                      <strong>Используем ранее полученные результаты</strong>
+                      <p>
+                        В джобе изменены готовые этапы:{' '}
+                        {plan.changes.map((s) => s.name).join(', ')}. Их новые
+                        инструкции и настройки не применятся к этому
+                        продолжению. Для повторного выполнения выбери новый
+                        запуск.
+                      </p>
+                    </div>
+                  )}
                   {plan.added.map((s) => (
                     <label className="run-field continuation-stage" key={s.id}>
                       <span>
@@ -506,12 +588,21 @@ export function RunLauncher({
                       <textarea
                         aria-label={'Инструкция следующего этапа: ' + s.name}
                         disabled={busy}
-                        value={overrides[s.id] ?? s.prompt}
+                        value={
+                          manual
+                            ? nextStep.prompt
+                            : (overrides[s.id] ?? s.prompt)
+                        }
                         onChange={(e) =>
-                          setOverrides((old) => ({
-                            ...old,
-                            [s.id]: e.target.value,
-                          }))
+                          manual
+                            ? setNextStep({
+                                ...nextStep,
+                                prompt: e.target.value,
+                              })
+                            : setOverrides((old) => ({
+                                ...old,
+                                [s.id]: e.target.value,
+                              }))
                         }
                         rows={5}
                         maxLength={30000}
@@ -616,6 +707,14 @@ export function RunLauncher({
               {error}
             </div>
           )}
+          {continuing &&
+            !applied &&
+            !plan?.eligible &&
+            !!plan?.reused.length && (
+              <p className="field-hint" aria-live="polite">
+                {plan.reason}
+              </p>
+            )}
           <div className="run-launch-footer">
             <span>Использует текущий аккаунт Codex</span>
             <button
@@ -914,11 +1013,11 @@ export function RunsPanel({
                 </TooltipContent>
               </Tooltip>
             </div>
-            {continuationPlan(run, pipeline).eligible && (
+            {canContinueRun(run, pipeline.id) && (
               <div className="continue-run-notice">
                 <span>
-                  В джобе появились новые этапы. Готовый результат можно
-                  использовать дальше.
+                  Готовый результат можно продолжить: взять новые этапы из джобы
+                  или описать следующий шаг.
                 </span>
                 <button
                   className="text-button"

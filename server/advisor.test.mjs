@@ -142,6 +142,11 @@ test('deep review receives all prompts, uses read-only policy without network, a
   assert.equal(turn.approvalPolicy, 'never');
   assert.equal(turn.sandboxPolicy.type, 'readOnly');
   assert.equal(turn.sandboxPolicy.networkAccess, false);
+  assert.deepEqual(
+    turn.outputSchema.properties.proposal.properties.stages.items.properties
+      .sourceId.enum,
+    [...f.pipeline.stages.map((s) => s.id), null],
+  );
   const context = JSON.parse(turn.input[0].text);
   assert.deepEqual(context.pipeline, f.pipeline);
   assert.equal(context.goal, f.input.goal);
@@ -320,4 +325,15 @@ test('progress and completion persistence failures close the client and prevent 
     assert.throws(() => f.advisor.apply(r.id), /Сначала дождись/);
     f.advisor.save = save;
   }
+});
+
+test('an unknown advisory link does not discard a valid review but unknown proposal IDs are rejected', (t) => {
+  const f = fixture(t);
+  const output = result(f.pipeline);
+  output.findings[0].stageIds = ['typo-in-stage-id', f.pipeline.stages[0].id];
+  const valid = validateReviewResult(output, f.pipeline);
+  assert.deepEqual(valid.findings[0].stageIds, [f.pipeline.stages[0].id]);
+  assert.deepEqual(valid.proposal, output.proposal);
+  output.proposal.stages[0].sourceId = 'typo-in-stage-id';
+  assert.throws(() => validateReviewResult(output, f.pipeline), /некорректный/);
 });

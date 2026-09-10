@@ -107,7 +107,7 @@ Tests use a fake Codex client and temporary data directories: no account, paid m
 
 React 19, TypeScript, Vinext/Vite, Tailwind and Base UI power the interface. The Node runner talks to `codex app-server` over JSONL/stdio and publishes state over SSE. The scaffold includes the public OpenAI Sites and Cloudflare plugins; no Sites registration is needed for local use. `npm run build` validates the frontend build, but its output alone cannot run the local Codex executor.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development notes.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup and contribution rules, [development workflow](docs/development-workflow.md) for PRs and branch protection, [architecture](docs/architecture.md) for runtime invariants, and [the release checklist](docs/releases.md) for publishing a version.
 
 ## Current limits
 

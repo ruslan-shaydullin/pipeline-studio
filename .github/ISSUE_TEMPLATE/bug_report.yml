@@ -1,0 +1,46 @@
+name: Bug report
+description: Report a reproducible problem with a pipeline, session or the app.
+title: '[Bug]: '
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        English and Russian are welcome. Please search existing issues first.
+        Share a small synthetic example. Do not attach `.pipeline-data`, real session transcripts, private prompts, credentials or `.env` files.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include the expected behavior and what actually happened.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include small example stage prompts and whether this was a new run, continuation, retry or resumed session.
+      placeholder: |
+        1. Create a job with stages ...
+        2. Complete stage ...
+        3. Choose ...
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: App version or commit, operating system, Node version and Codex CLI version if relevant. Include the access profile for permission problems.
+      placeholder: |
+        App version / commit:
+        OS:
+        Node (node --version):
+        Codex (version of the executable selected by the runner):
+        Access profile:
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Relevant error or screenshot
+      description: Optional. Share only the relevant excerpt and remove private data first.

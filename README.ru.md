@@ -105,13 +105,15 @@ npm run dev
 
 ## Архитектура
 
-React 19 / TypeScript / Vinext / Tailwind / Base UI. Круглый конструктор сохранён. Интерфейс отправляет команды по REST и получает состояния через SSE; Vite проксирует `/api/runner` на локальный Node-процесс. Тот общается с `codex app-server` по JSONL/stdio. Каждая попытка этапа получает отдельный Codex thread, продолжение — следующий turn той же сессии.
+React 19 / TypeScript / Vinext / Tailwind / Base UI. Круглый конструктор сохранён. Интерфейс отправляет команды по REST и получает состояния через SSE; Vite проксирует `/api/runner` на локальный Node-процесс. Тот общается с `codex app-server` по JSONL/stdio. Каждая попытка этапа получает отдельный Codex thread. Возобновление сообщением добавляет turn в ту же сессию; продолжение завершённого запуска добавляет новые этапы с отдельными сессиями.
 
 Адаптер проверен на `codex-cli 0.153.4`. Codex app-server использует развивающийся протокол; после обновления CLI интеграцию следует перепроверить.
 
 Этот исполнитель требует локального Node-процесса. Обычная сборка фронтенда для Cloudflare Workers сама по себе не запускает Codex; публикация продукта в веб здесь не настроена.
 
 ## Проверки
+
+Правила участия — в [CONTRIBUTING.md](CONTRIBUTING.md). Процесс «задача → ветка → PR → проверки → merge» описан в [development workflow](docs/development-workflow.md), устройство исполнителя — в [architecture](docs/architecture.md), подготовка версий — в [release checklist](docs/releases.md). Краткие инструкции для агентов находятся в [AGENTS.md](AGENTS.md).
 
 ```sh
 npm run test:runner

@@ -16,7 +16,7 @@ Update `package.json`, the matching root version metadata in `package-lock.json`
 - Verify the relevant user flow: create a job, complete a stage, append and continue without repeating finished work, answer a question, and reopen saved results. For assistant changes, also apply and undo a proposal.
 - For persisted-format changes, verify upgrade from a synthetic previous-version dataset, preservation of IDs/history, repeated startup and recovery from a failed write. Document any one-way migration.
 
-Record the tested commit, environment and results in the release PR. Browser E2E and live model tests are not currently automated; do not mark them complete based on the existing fake-client tests.
+Record the tested commit, environment and results in the release PR. Browser E2E runs in CI against the real UI and services with a synthetic Codex process. Live model compatibility remains a separate manual check; do not infer it from browser or fake-client tests.
 
 ## Publish
 

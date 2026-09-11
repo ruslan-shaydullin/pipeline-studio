@@ -23,6 +23,8 @@ npm run test:runner
 npm run typecheck
 npm run lint
 npm run build
+npx playwright install chromium # Linux: add --with-deps
+npm run test:e2e
 ```
 
 Use `npx oxfmt <changed-files>` to format your changes. Preserve the lockfile and add behavior-focused tests for changes to orchestration, persistence and access profiles. The intentionally broken project in `examples/issue-lab` is a demonstration fixture; keep its source broken so a pipeline can fix a copy.
@@ -47,6 +49,7 @@ AI-assisted contributions follow the same criteria. The contributor remains resp
 - `server/workspace.mjs`: job storage, imports and concurrent-update handling.
 - `server/advisor.mjs`: deep pipeline reviews and guarded apply/undo.
 - `server/*.test.mjs`: temporary-file tests with a fake Codex client.
+- `tests/e2e/`: Chromium scenarios against real local services and a fake JSONL executor; see [test isolation and debugging](tests/e2e/README.md).
 
 Read [architecture and invariants](docs/architecture.md) before changing these boundaries. [AGENTS.md](AGENTS.md) gives coding agents a short repository playbook.
 

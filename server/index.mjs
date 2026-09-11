@@ -5,9 +5,10 @@ import { CodexClient } from './codex.mjs';
 import { Runner } from './runner.mjs';
 import { Advisor } from './advisor.mjs';
 import { WorkspaceStore } from './workspace.mjs';
+import { localPorts } from '../lib/local-config.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const port = Number(process.env.PIPELINE_PORT || 4317);
+const { runner: port, web: webPort } = localPorts();
 const dataDir = path.resolve(
   process.env.PIPELINE_DATA_DIR || path.join(root, '.pipeline-data'),
 );
@@ -76,8 +77,8 @@ const server = http.createServer(async (request, response) => {
   if (
     origin &&
     ![
-      'http://localhost:3000',
-      'http://127.0.0.1:3000',
+      `http://localhost:${webPort}`,
+      `http://127.0.0.1:${webPort}`,
       `http://localhost:${port}`,
       `http://127.0.0.1:${port}`,
     ].includes(origin)

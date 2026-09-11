@@ -161,6 +161,7 @@ test('create a job, restart, continue manually, then append a template stage wit
     (await app.requests()).filter((r) => r.method === 'thread/start'),
   ).toHaveLength(3);
   await page
+    .getByRole('tabpanel', { name: /Запуски/ })
     .getByRole('button', { name: 'Проверка шаблона', exact: true })
     .click();
   await expect(
@@ -233,6 +234,7 @@ test('a question pauses downstream work and resumes the same saved session after
     await readFile(path.join(active(resumed, 1).cwd, 'candidate.txt'), 'utf8'),
   ).toBe('Выбирай beta.');
   await page
+    .getByRole('tabpanel', { name: /Запуски/ })
     .getByRole('button', { name: 'Проверка выбора', exact: true })
     .click();
   await expect(

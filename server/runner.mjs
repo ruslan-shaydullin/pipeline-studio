@@ -14,7 +14,14 @@ import {
   existsSync,
   statSync,
 } from 'node:fs';
-import { cp, mkdir, realpath, lstat } from 'node:fs/promises';
+import { realpath, lstat } from 'node:fs/promises';
+import {
+  copyWorkspace,
+  inspectWorkspace,
+  normalizeCopyOptions,
+  assertWorkspaceFits,
+} from './workspace-copy.mjs';
+export { copyWorkspace } from './workspace-copy.mjs';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -24,18 +31,6 @@ const uid = () => randomUUID();
 const now = () => new Date().toISOString();
 const textInput = (text) => [{ type: 'text', text, text_elements: [] }];
 const live = new Set(['running', 'waiting_approval']);
-const excluded = new Set([
-  '.git',
-  'node_modules',
-  '.next',
-  '.vinext',
-  '.wrangler',
-  '.pipeline-data',
-  '.codex',
-  'dist',
-  'coverage',
-  '.DS_Store',
-]);
 export const outputSchema = {
   type: 'object',
   additionalProperties: false,
@@ -148,52 +143,6 @@ export function validateJob(input) {
     throw new Error('Идентификаторы этапов должны различаться');
   if (input.task.length > 30000) throw new Error('Слишком длинная задача');
 }
-export async function copyWorkspace(
-  source,
-  destination,
-  { handoff = false } = {},
-) {
-  if (!source) {
-    await mkdir(destination, { recursive: true });
-    return;
-  }
-  await mkdir(path.dirname(destination), { recursive: true });
-  let count = 0,
-    bytes = 0;
-  await cp(source, destination, {
-    recursive: true,
-    force: false,
-    errorOnExist: true,
-    filter: async (entry) => {
-      if (entry === source) return true;
-      const name = path.basename(entry);
-      const alwaysExcluded = [
-        '.git',
-        'node_modules',
-        '.pipeline-data',
-        '.DS_Store',
-      ].includes(name);
-      const sourceExcluded =
-        !handoff &&
-        (excluded.has(name) ||
-          name === '.env' ||
-          name.startsWith('.env.') ||
-          /\.(pem|key)$/.test(name));
-      if (alwaysExcluded || sourceExcluded) return false;
-      const stat = await lstat(entry);
-      if (stat.isSymbolicLink()) return false;
-      if (stat.isFile()) {
-        bytes += stat.size;
-        count++;
-      }
-      if (count > 10000 || bytes > 150 * 1024 * 1024)
-        throw new Error(
-          'Рабочая папка больше лимита прототипа: 10 000 файлов / 150 МБ. Выбери папку с исходниками.',
-        );
-      return true;
-    },
-  });
-}
 async function baseline(cwd) {
   await exec('git', ['init', '-q', cwd]);
   await exec('git', ['add', '-A'], { cwd });
@@ -243,6 +192,7 @@ export class Runner extends EventEmitter {
     client,
     dataDir,
     prepareWorkspace = copyWorkspace,
+    inspectWorkspace: inspect = inspectWorkspace,
     initWorkspace = baseline,
     diffWorkspace = getDiff,
   }) {
@@ -250,6 +200,7 @@ export class Runner extends EventEmitter {
     this.client = client;
     this.dataDir = dataDir;
     this.prepareWorkspace = prepareWorkspace;
+    this.inspectWorkspace = inspect;
     this.initWorkspace = initWorkspace;
     this.diffWorkspace = diffWorkspace;
     mkdirSync(dataDir, { recursive: true, mode: 0o700 });
@@ -364,22 +315,68 @@ export class Runner extends EventEmitter {
     if (!run) throw new Error('Запуск не найден');
     return run;
   }
-  async create(input) {
-    validateJob(input);
-    if (!this.connected || !this.account)
-      throw new Error('Сначала войди в Codex: codex login');
-    const sourcePath = input.sourcePath?.trim()
-      ? await realpath(input.sourcePath.trim())
-      : '';
-    if (sourcePath && !(await lstat(sourcePath)).isDirectory())
+  async sourceDirectory(value) {
+    if (value !== undefined && typeof value !== 'string')
+      throw new Error('Укажи путь к папке с исходниками');
+    const source = value?.trim() ? await realpath(value.trim()) : '';
+    if (!source) return '';
+    if (!(await lstat(source)).isDirectory())
       throw new Error('Выбери папку проекта');
+    const dataDirectory = await realpath(this.dataDir);
+    const relative = path.relative(dataDirectory, source);
+    const home = process.env.HOME ? await realpath(process.env.HOME) : '';
     if (
-      sourcePath &&
-      (sourcePath === path.parse(sourcePath).root ||
-        sourcePath === process.env.HOME ||
-        sourcePath.startsWith(this.dataDir))
+      source === path.parse(source).root ||
+      source === home ||
+      relative === '' ||
+      (!relative.startsWith('..' + path.sep) &&
+        relative !== '..' &&
+        !path.isAbsolute(relative))
     )
       throw new Error('Выбери отдельную папку с исходниками проекта');
+    return source;
+  }
+  async inspectCopy({ sourcePath, runId, stageId, copyOptions } = {}) {
+    const limits = normalizeCopyOptions(copyOptions);
+    if (runId !== undefined) {
+      const run = this.find(runId);
+      const index =
+        stageId === undefined
+          ? run.stages.length
+          : run.stages.findIndex((stage) => stage.id === stageId);
+      if (index < 0) throw new Error('Этап не найден');
+      const previous = run.stages[index - 1];
+      const attempt = previous?.attempts.find(
+        (a) => a.id === previous.activeAttemptId,
+      );
+      if (
+        previous &&
+        (!attempt || !['done', 'skipped'].includes(attempt.status))
+      )
+        throw new Error('Сначала заверши предыдущий этап');
+      const source =
+        attempt?.cwd || (await this.sourceDirectory(run.sourcePath));
+      return this.inspectWorkspace(source, {
+        handoff: !!attempt,
+        copyOptions:
+          copyOptions === undefined
+            ? normalizeCopyOptions(run.copyOptions)
+            : limits,
+      });
+    }
+    if (stageId !== undefined) throw new Error('Для этапа нужен запуск');
+    return this.inspectWorkspace(await this.sourceDirectory(sourcePath), {
+      copyOptions: limits,
+    });
+  }
+  async create(input) {
+    validateJob(input);
+    const copyOptions = normalizeCopyOptions(input.copyOptions);
+    if (!this.connected || !this.account)
+      throw new Error('Сначала войди в Codex: codex login');
+    const sourcePath = await this.sourceDirectory(input.sourcePath);
+    const copyReport = await this.inspectWorkspace(sourcePath, { copyOptions });
+    assertWorkspaceFits(copyReport);
     if (input.model && !this.models.some((m) => m.id === input.model))
       throw new Error('Модель недоступна в текущем Codex');
     const run = {
@@ -389,6 +386,7 @@ export class Runner extends EventEmitter {
       task: input.task.trim(),
       accessMode: normalizeAccessMode(input.accessMode),
       sourcePath,
+      copyOptions,
       model: input.model || '',
       createdAt: now(),
       status: 'queued',
@@ -445,6 +443,7 @@ export class Runner extends EventEmitter {
       number: stage.attempts.length + 1,
       prompt: stage.prompt,
       accessMode: normalizeAccessMode(run.accessMode),
+      copyOptions: normalizeCopyOptions(run.copyOptions),
       startedAt: now(),
       status: 'running',
       threadId: null,
@@ -465,10 +464,16 @@ export class Runner extends EventEmitter {
       (run.generation || 0) === generation &&
       this.current(run) === attempt &&
       live.has(attempt.status);
-    await this.prepareWorkspace(last?.cwd || run.sourcePath, attempt.cwd, {
-      handoff: !!last,
-    });
+    const copyReport = await this.prepareWorkspace(
+      last?.cwd || run.sourcePath,
+      attempt.cwd,
+      {
+        handoff: !!last,
+        copyOptions: attempt.copyOptions,
+      },
+    );
     if (!isCurrent()) return;
+    if (copyReport) attempt.copyReport = copyReport;
     await this.initWorkspace(attempt.cwd);
     if (!isCurrent()) return;
     const handoff = previous
@@ -866,6 +871,7 @@ export class Runner extends EventEmitter {
       mutationId,
       overrides = {},
       accessMode,
+      copyOptions,
       reuseCompleted = false,
       manualStep = false,
     },
@@ -884,6 +890,7 @@ export class Runner extends EventEmitter {
           expectedState,
           overrides,
           accessMode,
+          ...(copyOptions !== undefined ? { copyOptions } : {}),
           ...(reuseCompleted ? { reuseCompleted } : {}),
           ...(manualStep ? { manualStep } : {}),
         }),
@@ -903,6 +910,9 @@ export class Runner extends EventEmitter {
       throw new Error('Запуск изменился. Открой продолжение заново');
     const nextAccessMode = normalizeAccessMode(
       accessMode === undefined ? run.accessMode : accessMode,
+    );
+    const nextCopyOptions = normalizeCopyOptions(
+      copyOptions === undefined ? run.copyOptions : copyOptions,
     );
     const effective = {
       ...pipeline,
@@ -951,6 +961,7 @@ export class Runner extends EventEmitter {
       generation: run.generation,
       continuations: run.continuations,
       accessMode: run.accessMode,
+      copyOptions: run.copyOptions,
     };
     const added = plan.added.map((s) => ({
       id: s.id,
@@ -970,6 +981,7 @@ export class Runner extends EventEmitter {
     run.stages = [...run.stages, ...added];
     run.status = 'queued';
     run.accessMode = nextAccessMode;
+    run.copyOptions = nextCopyOptions;
     run.generation = (run.generation || 0) + 1;
     run.continuations = [
       ...(run.continuations || []),
@@ -990,8 +1002,11 @@ export class Runner extends EventEmitter {
     this.schedule();
     return run;
   }
-  retry(runId, stageId, prompt) {
+  retry(runId, stageId, prompt, copyOptions) {
     const run = this.find(runId);
+    const nextCopyOptions = normalizeCopyOptions(
+      copyOptions === undefined ? run.copyOptions : copyOptions,
+    );
     if (['queued', 'running', 'waiting_approval'].includes(run.status))
       throw new Error('Сначала останови запуск');
     const index = run.stages.findIndex((s) => s.id === stageId);
@@ -1031,6 +1046,7 @@ export class Runner extends EventEmitter {
       stage.status = 'idle';
       stage.activeAttemptId = null;
     }
+    run.copyOptions = nextCopyOptions;
     run.cursor = restartIndex;
     run.status = 'queued';
     this.flush();

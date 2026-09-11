@@ -8,7 +8,14 @@ import {
 } from '../lib/continuation.mjs';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
-import { mkdtemp, rm, mkdir, writeFile, readFile } from 'node:fs/promises';
+import {
+  mkdtemp,
+  rm,
+  mkdir,
+  writeFile,
+  readFile,
+  lstat,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -962,4 +969,187 @@ test('manual, template, and manual continuation keep all prior sessions and thei
   assert.deepEqual(run.stages.slice(0, 3), beforeManual);
   assert.deepEqual(run.stages[0], first);
   assert.equal(run.stages[3].addedManually, true);
+});
+
+test('copy preview is read-only and oversized source fails before a run or Codex thread is created', async (t) => {
+  const { runner, client, dir } = await fixture(t);
+  const source = await mkdtemp(path.join(tmpdir(), 'pipeline-source-'));
+  t.after(() => rm(source, { recursive: true, force: true }));
+  await writeFile(path.join(source, 'large.txt'), '1234567890');
+  const copyOptions = { maxFiles: 10, maxBytes: 5 };
+  const report = await runner.inspectCopy({ sourcePath: source, copyOptions });
+  assert.equal(report.fileCount, 1);
+  assert.equal(report.bytes, 10);
+  assert.deepEqual(report.exceeded, ['bytes']);
+  assert.equal(runner.runs.length, 0);
+  await assert.rejects(
+    runner.create({ ...job(), sourcePath: source, copyOptions }),
+    /лимит/i,
+  );
+  assert.equal(runner.runs.length, 0);
+  assert.equal(
+    client.calls.filter((c) => c.method === 'thread/start').length,
+    0,
+  );
+  await assert.rejects(lstat(path.join(dir, 'workspaces')), { code: 'ENOENT' });
+});
+
+test('copy preview shares source path restrictions and permits siblings of the data directory', async (t) => {
+  const { runner, dir } = await fixture(t);
+  const sibling = dir + '-source';
+  await mkdir(sibling);
+  t.after(() => rm(sibling, { recursive: true, force: true }));
+  await writeFile(path.join(sibling, 'source.txt'), 'source');
+  await assert.rejects(
+    runner.inspectCopy({ sourcePath: dir }),
+    /отдельную папку/,
+  );
+  await assert.rejects(
+    runner.inspectCopy({ sourcePath: '/' }),
+    /отдельную папку/,
+  );
+  await assert.rejects(runner.inspectCopy({ sourcePath: 42 }), /путь/);
+  assert.equal(
+    (await runner.inspectCopy({ sourcePath: sibling })).fileCount,
+    1,
+  );
+  await assert.rejects(
+    runner.inspectCopy({ stageId: 'stage-0' }),
+    /нужен запуск/,
+  );
+});
+
+test('retry can raise copy limits after handoff overflow without modifying the completed attempt', async (t) => {
+  const { runner, client } = await fixture(t);
+  runner.prepareWorkspace = copyWorkspace;
+  const copyOptions = { maxFiles: 10, maxBytes: 5 };
+  const run = await runner.create({ ...job(), copyOptions });
+  const first = await ready(runner, run, 0);
+  await writeFile(path.join(first.cwd, 'artifact.txt'), '1234567890');
+  await complete(runner, first);
+  await settle(() => run.status === 'failed' && !runner.busy);
+  const failed = runner.current(run);
+  const historical = structuredClone(first);
+  assert.equal(failed.threadId, null);
+  assert.deepEqual(failed.copyOptions, copyOptions);
+  const preview = await runner.inspectCopy({
+    runId: run.id,
+    stageId: 'stage-1',
+  });
+  assert.deepEqual(preview.exceeded, ['bytes']);
+  const raised = { maxFiles: 20, maxBytes: 100 };
+  runner.retry(run.id, 'stage-1', 'Retry after increasing limit', raised);
+  const retried = await ready(runner, run, 1);
+  assert.deepEqual(retried.copyOptions, raised);
+  assert.deepEqual(failed.copyOptions, copyOptions);
+  assert.deepEqual(first, historical);
+  assert.equal(retried.copyReport.bytes, 10);
+  assert.equal(
+    await readFile(path.join(retried.cwd, 'artifact.txt'), 'utf8'),
+    '1234567890',
+  );
+  assert.equal(
+    client.calls.filter((c) => c.method === 'thread/start').length,
+    2,
+  );
+});
+
+test('continuation preview preserves ignored artifacts and snapshots new copy limits with its receipt', async (t) => {
+  const { runner, run, first } = await oneStageDone(t);
+  await mkdir(path.join(first.cwd, 'dist'));
+  await writeFile(path.join(first.cwd, '.gitignore'), 'dist/\n');
+  await writeFile(
+    path.join(first.cwd, 'dist', 'report.txt'),
+    'generated report',
+  );
+  const preview = await runner.inspectCopy({ runId: run.id });
+  assert.equal(preview.fileCount, 2);
+  assert.ok(preview.largestDirectories.some((entry) => entry.path === 'dist'));
+  const historical = structuredClone(first);
+  const copyOptions = { maxFiles: 20000, maxBytes: 300 * 1024 * 1024 };
+  const request = { ...extension(run, job().stages), copyOptions };
+  runner.extend(run.id, request);
+  const next = await ready(runner, run, 1);
+  assert.deepEqual(next.copyOptions, copyOptions);
+  assert.deepEqual(run.copyOptions, copyOptions);
+  assert.deepEqual(first, historical);
+  runner.extend(run.id, request);
+  assert.equal(run.stages.length, 2);
+  assert.throws(
+    () =>
+      runner.extend(run.id, {
+        ...request,
+        copyOptions: { ...copyOptions, maxFiles: 30000 },
+      }),
+    /другого продолжения/,
+  );
+});
+
+test('legacy runs retain old attempts and use default copy limits on retry after restart', async (t) => {
+  const { runner, run, first, dir } = await oneStageDone(t);
+  delete run.copyOptions;
+  delete first.copyOptions;
+  const historical = structuredClone(first);
+  runner.shutdown();
+  const client = new FakeCodex();
+  const restored = new Runner({
+    client,
+    dataDir: dir,
+    prepareWorkspace: async (_, dest) => mkdir(dest, { recursive: true }),
+    initWorkspace: async () => {},
+    diffWorkspace: async () => '',
+  });
+  await restored.connect();
+  const saved = restored.find(run.id);
+  restored.retry(run.id, 'stage-0', 'Retry legacy run');
+  const next = await ready(restored, saved, 0);
+  assert.deepEqual(next.copyOptions, {
+    maxFiles: 10000,
+    maxBytes: 150 * 1024 * 1024,
+  });
+  assert.deepEqual(saved.stages[0].attempts[0], historical);
+  assert.equal(saved.stages[0].attempts[0].copyOptions, undefined);
+  restored.shutdown();
+});
+
+test('invalid copy settings are rejected before changing retries or continuations', async (t) => {
+  const { runner, run } = await oneStageDone(t);
+  const initial = JSON.stringify(run);
+  assert.throws(
+    () =>
+      runner.retry(run.id, 'stage-0', 'Retry', { maxFiles: 0, maxBytes: 100 }),
+    /лимит/i,
+  );
+  assert.equal(JSON.stringify(run), initial);
+  assert.throws(
+    () =>
+      runner.extend(run.id, {
+        ...extension(run, job().stages),
+        copyOptions: { maxFiles: 20, maxBytes: Infinity },
+      }),
+    /лимит/i,
+  );
+  assert.equal(JSON.stringify(run), initial);
+});
+
+test('a failed continuation save preserves the completed run and its copy settings', async (t) => {
+  const { runner, run } = await oneStageDone(t);
+  const initial = JSON.stringify(run);
+  const flush = runner.flush.bind(runner);
+  runner.flush = () => {
+    throw new Error('Synthetic disk write failure');
+  };
+  try {
+    assert.throws(
+      () =>
+        runner.extend(run.id, {
+          ...extension(run, job().stages),
+          copyOptions: { maxFiles: 30000, maxBytes: 500 * 1024 * 1024 },
+        }),
+      /disk write failure/,
+    );
+    assert.equal(JSON.stringify(run), initial);
+  } finally {
+    runner.flush = flush;
+  }
 });

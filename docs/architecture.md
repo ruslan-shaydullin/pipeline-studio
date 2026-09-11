@@ -4,16 +4,16 @@ Pipeline Studio is a single-user local web application. React/Vinext sends actio
 
 ## Code map
 
-| Responsibility | Source |
-| --- | --- |
-| Editor, sessions and assistant UI | `app/` |
-| Shared records and continuation rules | `lib/pipeline.ts`, `lib/use-runner.ts`, `lib/continuation.mjs` |
-| Browser persistence client and outbox | `lib/workspace-client.mjs`, `lib/use-workspace.ts` |
-| HTTP actions and SSE | `server/index.mjs` |
-| Stage execution, handoff and retries | `server/runner.mjs` |
-| Codex JSONL transport | `server/codex.mjs` |
-| Job storage, validation and imports | `server/workspace.mjs` |
-| Reviews, proposal validation and apply/undo | `server/advisor.mjs`, `lib/advisor.mjs` |
+| Responsibility                              | Source                                                         |
+| ------------------------------------------- | -------------------------------------------------------------- |
+| Editor, sessions and assistant UI           | `app/`                                                         |
+| Shared records and continuation rules       | `lib/pipeline.ts`, `lib/use-runner.ts`, `lib/continuation.mjs` |
+| Browser persistence client and outbox       | `lib/workspace-client.mjs`, `lib/use-workspace.ts`             |
+| HTTP actions and SSE                        | `server/index.mjs`                                             |
+| Stage execution, handoff and retries        | `server/runner.mjs`                                            |
+| Codex JSONL transport                       | `server/codex.mjs`                                             |
+| Job storage, validation and imports         | `server/workspace.mjs`                                         |
+| Reviews, proposal validation and apply/undo | `server/advisor.mjs`, `lib/advisor.mjs`                        |
 
 Codex is the only connected executor today, even though the template schema can represent other agent names.
 
@@ -21,11 +21,11 @@ Codex is the only connected executor today, even though the template schema can 
 
 **Projects and folders** organize jobs. A **job** is a reusable pipeline template: task, description, ordered stage definitions and a default access profile.
 
-A **run** owns an execution snapshot, including its task, model, access profile, source path, ordered run stages and cursor. Editing a job does not rewrite existing runs.
+A **run** owns an execution snapshot, including its task, model, access profile, source path, working-copy limits, ordered run stages and cursor. Editing a job does not rewrite existing runs.
 
 A **run stage** retains its saved definition, effective prompt, status, attempts and `activeAttemptId`. Template stages, generated stages (`generatedBy`) and manually appended stages (`addedManually`) have distinct provenance.
 
-An **attempt** is an execution of a stage with its own working directory and Codex thread. It retains the input, prompt, access profile, activities, pending requests, diff and structured outcome. Resuming it can add another turn to the same thread.
+An **attempt** is an execution of a stage with its own working directory and Codex thread. It retains the input, prompt, access profile, working-copy limits, activities, pending requests, diff and structured outcome. Resuming it can add another turn to the same thread.
 
 ## Stage lifecycle
 
@@ -33,22 +33,22 @@ Runs start `queued`. The scheduler executes one pipeline stage at a time. A stag
 
 A completed turn must produce a validated outcome with `status`, `summary`, `handoff` and `artifacts`:
 
-| Outcome | Runner behavior |
-| --- | --- |
+| Outcome            | Runner behavior                                                              |
+| ------------------ | ---------------------------------------------------------------------------- |
 | `done` / `skipped` | Finish the stage, advance the cursor, queue the next stage or finish the run |
-| `needs_input` | Keep the cursor and set the attempt, stage and run to `waiting_user` |
-| `failed` | Keep the cursor and mark the attempt, stage and run as failed |
+| `needs_input`      | Keep the cursor and set the attempt, stage and run to `waiting_user`         |
+| `failed`           | Keep the cursor and mark the attempt, stage and run as failed                |
 
 A completed Codex turn alone is insufficient to advance. Invalid output or transport failures fail the attempt. Stopping execution invalidates pending work; late completion events must not revive it.
 
 ## New run, retry, resume and continuation
 
-| Operation | Behavior |
-| --- | --- |
-| New run | Start a new execution of the template from the beginning |
-| Retry from a stage | Create a new attempt there and rerun downstream stages, retaining previous attempts |
-| Message / resume | Steer an active turn, or resume the current waiting/failed/stopped attempt with its existing thread and directory |
-| Continue a completed run | Reuse finished results and append new stages, retaining previous attempts |
+| Operation                | Behavior                                                                                                          |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| New run                  | Start a new execution of the template from the beginning                                                          |
+| Retry from a stage       | Create a new attempt there and rerun downstream stages, retaining previous attempts                               |
+| Message / resume         | Steer an active turn, or resume the current waiting/failed/stopped attempt with its existing thread and directory |
+| Continue a completed run | Reuse finished results and append new stages, retaining previous attempts                                         |
 
 Completed-run continuation requires finished or skipped active attempts and the last handoff directory. It can append new template stages or one manual step belonging only to that run. Changes to completed template prompts/settings require acknowledging reuse of their old results; those old stages do not execute their updated instructions. Reordered templates can still be followed by a manual step.
 
@@ -60,7 +60,13 @@ Authorized planner stages can insert up to five following stages after a success
 
 Each new attempt gets a separate directory. The first copies the supplied source directory; later attempts copy the preceding stage's active directory and receive summaries/handoffs from preceding active attempts. The runner initializes a fresh local Git baseline for diffs.
 
-Initial source copying excludes Git metadata, dependencies, caches, build outputs, common secret files and symlinks. Handoff preserves generated artifacts, including build outputs, while omitting `.git`, `node_modules` and symlinks. New sessions must restore Git context and dependencies when needed. A full-access session is not contained by this copy mechanism.
+`copyOptions` records `maxFiles` and `maxBytes` on the run and snapshots them on each new attempt. Defaults are 10,000 files and 150 × 1024 × 1024 bytes. Retry and continuation may change the limits for future attempts without rewriting saved attempts. Legacy records without these options use the defaults. Resuming an existing attempt does not recopy its directory.
+
+Folder inspection uses the same selection rules as copying and reports included counts/bytes, excluded entries, the largest directories/files and any exceeded limits. A pruned directory counts as one excluded entry; its descendants are not scanned or counted. The launch check runs before creating a Codex session. Inspection is a preview, not a reservation: copying revalidates the limits against current files before a session can begin.
+
+Initial source copying excludes Git metadata, dependencies, caches, build outputs, common secret files and symlinks, then applies `.gitignore` files within the selected source tree and a root `.pipelineignore`. `.pipelineignore` has highest priority, including negations, subject to Git's excluded-parent rules. Built-in exclusions and symlinks cannot be restored by negation. Ignore matching uses isolated Git parsers without the source repository's index or user/system/global excludes, so rules also apply to tracked files and non-repository folders. The source repository is not modified.
+
+Handoff deliberately does not apply either ignore format or initial-source build/secret exclusions: it preserves generated artifacts, including ignored build outputs. Both modes omit `.git`, `node_modules`, `.pipeline-data`, `.DS_Store` and symlinks. New sessions must restore Git context and dependencies when needed. A full-access session is not contained by this copy mechanism.
 
 When changing a template's artifact contract, provide a way for new stages to consume older results. Editing a completed stage's template does not create a renamed artifact in its saved workspace.
 
@@ -68,13 +74,13 @@ When changing a template's artifact contract, provide a way for new stages to co
 
 The default directory is `.pipeline-data`; `PIPELINE_DATA_DIR` overrides it.
 
-| Location | Contents |
-| --- | --- |
+| Location                               | Contents                                                                        |
+| -------------------------------------- | ------------------------------------------------------------------------------- |
 | `workspace.json`, `workspace.json.bak` | Projects, folders and job templates, with revision, epoch and mutation receipts |
-| `runs.json` | Run history, active attempts and archived stages |
-| `reviews.json` | Last 20 assistant reviews, proposals and original snapshots |
-| `workspaces/<run>/<attempt>` | Attempt working directories |
-| `advisor/<review>` | Separate advisor session directory |
+| `runs.json`                            | Run history, active attempts and archived stages                                |
+| `reviews.json`                         | Last 20 assistant reviews, proposals and original snapshots                     |
+| `workspaces/<run>/<attempt>`           | Attempt working directories                                                     |
+| `advisor/<review>`                     | Separate advisor session directory                                              |
 
 Workspace changes use atomic replacement, revision/epoch checks and mutation IDs. The browser keeps unsaved edits in a per-tab outbox and exposes conflicts. Restoring a workspace backup creates a new epoch, preventing stale clients from overwriting the restored state.
 

@@ -43,8 +43,24 @@ export type PendingRequest = {
     }[];
   };
 };
+export type WorkspaceCopyOptions = {
+  maxFiles: number;
+  maxBytes: number;
+};
+export type WorkspaceCopyReport = {
+  fileCount: number;
+  bytes: number;
+  excludedCount: number;
+  largestDirectories: { path: string; fileCount: number; bytes: number }[];
+  largestFiles: { path: string; bytes: number }[];
+  exceeded: ('files' | 'bytes')[];
+  limits: WorkspaceCopyOptions;
+  ignoreFiles: string[];
+};
 export type Attempt = {
   accessMode?: AccessMode;
+  copyOptions?: WorkspaceCopyOptions;
+  copyReport?: WorkspaceCopyReport;
   id: string;
   number: number;
   prompt: string;
@@ -87,6 +103,7 @@ export type RunStage = {
 };
 export type AgentRun = {
   accessMode?: AccessMode;
+  copyOptions?: WorkspaceCopyOptions;
   generation?: number;
   continuations?: {
     id: string;
@@ -108,6 +125,7 @@ export type AgentRun = {
 };
 export type RunnerState = {
   advisorAvailable?: boolean;
+  workspaceCopyAvailable?: boolean;
   reviews?: PipelineReview[];
   accessProfiles?: boolean;
   workspaceRevision?: number;

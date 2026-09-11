@@ -28,6 +28,7 @@ const streams = new Set();
 const publicState = () => ({
   ...runner.state(),
   accessProfiles: true,
+  workspaceCopyAvailable: true,
   advisorAvailable: true,
   reviews: advisor.list(),
   examplePath: path.join(root, 'examples/issue-lab'),
@@ -104,6 +105,8 @@ const server = http.createServer(async (request, response) => {
         workspace.commit(value, route.endsWith('/import') ? 'import' : 'save'),
       );
     }
+    if (request.method === 'POST' && route === '/workspace/inspect')
+      return json(response, 200, await runner.inspectCopy(await body(request)));
     if (request.method === 'GET' && route === '/state')
       return json(response, 200, publicState());
     if (request.method === 'GET' && route === '/events') {
@@ -149,7 +152,8 @@ const server = http.createServer(async (request, response) => {
       if (action === 'stop') await runner.stop(id);
       if (action === 'message')
         await runner.message(id, value.attemptId, value.text);
-      if (action === 'retry') runner.retry(id, value.stageId, value.prompt);
+      if (action === 'retry')
+        runner.retry(id, value.stageId, value.prompt, value.copyOptions);
       if (action === 'answer')
         await runner.answer(id, value.attemptId, value.requestId, value);
       return json(response, 200, runner.find(id));

@@ -790,6 +790,107 @@
   line-height: 1.7;
   margin: 5px 0 9px;
 }
+.workspace-copy-settings {
+  margin: 18px 0;
+  border: 1px solid #e4e9f0;
+  border-radius: 10px;
+  padding: 12px 14px;
+  min-width: 0;
+}
+.workspace-copy-settings > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: #536077;
+  list-style: none;
+}
+.workspace-copy-settings > summary::-webkit-details-marker {
+  display: none;
+}
+.workspace-copy-settings[open] > summary {
+  margin-bottom: 12px;
+}
+.workspace-copy-settings[open] > summary > svg {
+  transform: rotate(180deg);
+}
+.workspace-copy-settings > summary:focus-visible,
+.copy-breakdown > summary:focus-visible {
+  outline: 2px solid #7da4df;
+  outline-offset: 3px;
+}
+.copy-limit-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.copy-limit-fields .run-field {
+  margin: 0 0 10px;
+  font-size: 12px;
+}
+.copy-limit-fields input {
+  padding: 8px 10px;
+}
+.copy-report {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #e9edf3;
+}
+.copy-report-total {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 16px;
+  color: #4d617b;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.copy-report-total strong {
+  font-weight: 550;
+}
+.copy-ignore-files {
+  overflow-wrap: anywhere;
+}
+.copy-breakdown {
+  margin-top: 10px;
+  color: #66758a;
+  font-size: 12px;
+}
+.copy-breakdown > summary {
+  cursor: pointer;
+}
+.copy-breakdown ul {
+  list-style: none;
+  padding: 0;
+  margin: 6px 0 0;
+}
+.copy-breakdown li {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 6px 0;
+  border-bottom: 1px solid #f0f2f5;
+}
+.copy-breakdown code {
+  overflow-wrap: anywhere;
+  font-size: 11px;
+}
+.copy-breakdown li > span {
+  white-space: nowrap;
+  color: #8792a0;
+  font-size: 11px;
+}
+@media (max-width: 480px) {
+  .copy-limit-fields {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+}
 .run-launch-footer {
   display: flex;
   align-items: center;

@@ -63,11 +63,11 @@ The assistant reviews supplied instructions and result summaries; it does not ve
 
 Choose **«Доступ»** in the header to set the job's default. All stages, including generated ones, inherit it. The launch form allows an override for one run.
 
-| Profile | Writes | Network | Technical approvals |
-| --- | --- | --- | --- |
-| **С подтверждениями** (default) | Working directory | On request | Requested when needed |
-| **Рабочая папка + сеть** | Working directory | Enabled | Required outside sandbox permissions |
-| **Полный доступ** | No Codex sandbox restriction | Enabled | Disabled |
+| Profile                         | Writes                       | Network    | Technical approvals                  |
+| ------------------------------- | ---------------------------- | ---------- | ------------------------------------ |
+| **С подтверждениями** (default) | Working directory            | On request | Requested when needed                |
+| **Рабочая папка + сеть**        | Working directory            | Enabled    | Required outside sandbox permissions |
+| **Полный доступ**               | No Codex sandbox restriction | Enabled    | Disabled                             |
 
 Workspace profiles restrict writes, not all reads; Codex's read-access policy still applies. Full access runs with your OS user's permissions and can access files outside the working copy. Use it for trusted tasks and prompts. Host or administrator policies can still restrict execution. Questions about requirements remain interactive in every profile: disabling technical approvals does not answer business decisions or expand task scope.
 
@@ -82,15 +82,33 @@ Each run snapshots its profile. Editing a job does not change an active session.
 
 These files are excluded from Git. Export/import transfers job templates, not session history or working files. Back up the entire data directory when moving machines. Avoid placing large development workspaces in folders subject to cloud offloading.
 
-Source copying excludes Git metadata, dependencies, build output, local `.env` files, key files and symlinks. Handoff preserves generated artifacts but still omits `.git`, `node_modules` and symlinks. Copy limit: 10,000 files / 150 MB. A copy is not a security boundary in full-access mode.
+### Working copies and large projects
+
+Open **«Копирование файлов»** in the launch, retry or continuation form to set the maximum file count and size of each working copy. Defaults remain **10,000 files / 150 MiB** (157,286,400 bytes). **«Проверить объём копии»** reports the included file count, size, skipped entries and largest directories/files, so you can remove unnecessary input or raise the relevant limit. A skipped directory counts as one entry without scanning its contents. The runner checks again before creating a session; a folder that grows after the preview can still exceed the limit.
+
+Limits belong to the run and are saved with each new attempt. Changing them for a retry or continuation affects new attempts; previous sessions keep their original settings and files. Resuming an existing session by message uses its existing directory. Each new attempt creates another copy, so larger limits also increase retained disk usage.
+
+Initial source copying excludes Git metadata, dependencies, caches, build output, local `.env` files, key files and symlinks. It also reads `.gitignore` files within the selected source directory, including nested rules. These rules apply even to files tracked by Git. Add a `.pipelineignore` file at the root of the selected source directory to override those rules for Pipeline Studio, using Git ignore syntax:
+
+```gitignore
+# Large inputs unnecessary for this job
+/datasets/
+*.mp4
+/scratch/*
+!/scratch/example.json
+```
+
+`.pipelineignore` takes precedence over `.gitignore`; `!` can restore an ignored file if its parent directories are included. Built-in exclusions and symlinks cannot be restored with ignore rules. Personal/global Git excludes do not affect copying, and a source folder does not have to be a Git repository.
+
+Between stages, handoff preserves generated artifacts, including `dist`, `coverage` and files matching source ignore rules. It still omits `.git`, `node_modules`, `.pipeline-data`, `.DS_Store` and symlinks. Restore dependencies in the new stage when needed. A copy is not a security boundary in full-access mode.
 
 Optional environment variables:
 
-| Variable | Purpose |
-| --- | --- |
-| `PIPELINE_CODEX_BIN` | Path to the Codex executable |
-| `PIPELINE_DATA_DIR` | Data directory; defaults to `.pipeline-data` |
-| `PIPELINE_PORT` | Runner port; changing it also requires updating the Vite proxy |
+| Variable             | Purpose                                                        |
+| -------------------- | -------------------------------------------------------------- |
+| `PIPELINE_CODEX_BIN` | Path to the Codex executable                                   |
+| `PIPELINE_DATA_DIR`  | Data directory; defaults to `.pipeline-data`                   |
+| `PIPELINE_PORT`      | Runner port; changing it also requires updating the Vite proxy |
 
 Keep the runner local. It has no multi-user authentication and is not designed to be exposed to a network.
 

@@ -1,5 +1,12 @@
 'use client';
 import { AccessSelect } from './access-settings';
+import {
+  WorkspaceCopySettings,
+  WorkspaceCopySummary,
+  workspaceCopyDraft,
+  workspaceCopyOptions,
+  type WorkspaceCopyDraft,
+} from './workspace-copy-settings';
 import { accessModes } from '@/lib/access.mjs';
 import type { AccessMode } from '@/lib/pipeline';
 import { useLayoutEffect, useRef, useState } from 'react';
@@ -342,6 +349,18 @@ export function RunLauncher({
     [model, setModel] = useState('default');
   const [busy, setBusy] = useState(false),
     [error, setError] = useState('');
+  const [copyDrafts, setCopyDrafts] = useState<
+    Record<string, WorkspaceCopyDraft>
+  >({});
+  const copyKey = continuing ? baseId : 'new';
+  const copyDraft =
+    copyDrafts[copyKey] ??
+    workspaceCopyDraft(
+      continuing
+        ? base?.copyOptions
+        : runner.runs.find((r) => r.pipelineId === pipeline.id)?.copyOptions,
+    );
+  const copyOptions = workspaceCopyOptions(copyDraft);
   async function submit() {
     setBusy(true);
     setError('');
@@ -352,6 +371,8 @@ export function RunLauncher({
         onOpenChange(false);
         return;
       }
+      if (!runner.workspaceCopyAvailable || !copyOptions)
+        throw new Error('Проверь доступность и настройки копирования файлов.');
       if (continuing) {
         if (!base || !plan?.eligible)
           throw new Error(
@@ -363,6 +384,7 @@ export function RunLauncher({
           reuseCompleted: !!plan.changes.length,
           manualStep: manual,
           accessMode,
+          copyOptions,
           overrides: Object.fromEntries(
             plan.added
               .filter((s) => overrides[s.id] !== undefined)
@@ -384,6 +406,7 @@ export function RunLauncher({
         run = await runnerAction('/runs', {
           pipelineId: snapshot.id,
           accessMode,
+          copyOptions,
           name: snapshot.name,
           task,
           sourcePath,
@@ -627,6 +650,7 @@ export function RunLauncher({
                 Задача этого запуска
                 <textarea
                   value={task}
+                  disabled={busy}
                   onChange={(e) => setTask(e.target.value)}
                   rows={5}
                   required
@@ -637,7 +661,11 @@ export function RunLauncher({
                 Папка с исходниками
                 <input
                   value={sourcePath}
-                  onChange={(e) => setSourcePath(e.target.value)}
+                  disabled={busy}
+                  onChange={(e) => {
+                    setSourcePath(e.target.value);
+                    setError('');
+                  }}
                   placeholder="/Users/…/project"
                 />
               </label>
@@ -650,7 +678,11 @@ export function RunLauncher({
                 <button
                   type="button"
                   className="text-button"
-                  onClick={() => setSourcePath(runner.examplePath || '')}
+                  disabled={busy}
+                  onClick={() => {
+                    setSourcePath(runner.examplePath || '');
+                    setError('');
+                  }}
                 >
                   <FolderOpen size={14} /> Учебный проект с падающими тестами
                 </button>
@@ -658,7 +690,11 @@ export function RunLauncher({
               <label className="run-field" htmlFor="run-model">
                 Модель
               </label>
-              <Select value={model} onValueChange={(v) => setModel(String(v))}>
+              <Select
+                value={model}
+                disabled={busy}
+                onValueChange={(v) => setModel(String(v))}
+              >
                 <SelectTrigger id="run-model">
                   <SelectValue>
                     {model === 'default'
@@ -677,6 +713,24 @@ export function RunLauncher({
                 </SelectContent>
               </Select>
             </>
+          )}
+          <WorkspaceCopySettings
+            draft={copyDraft}
+            onChange={(draft) => {
+              setCopyDrafts((old) => ({ ...old, [copyKey]: draft }));
+              setError('');
+            }}
+            target={continuing && base ? { runId: base.id } : { sourcePath }}
+            handoff={continuing}
+            available={!!runner.workspaceCopyAvailable}
+            online={runner.online}
+            disabled={busy || !!applied}
+          />
+          {runner.online && !runner.workspaceCopyAvailable && (
+            <p className="runner-error" role="alert">
+              Обновление копирования требует перезапуска локального исполнителя
+              после завершения текущих запусков и проверок.
+            </p>
           )}
           <AccessSelect
             value={accessMode}
@@ -725,6 +779,8 @@ export function RunLauncher({
                 !runner.connected ||
                 !runner.account ||
                 !runner.accessProfiles ||
+                (!applied &&
+                  (!runner.workspaceCopyAvailable || !copyOptions)) ||
                 (continuing &&
                   !applied &&
                   (!plan?.eligible ||
@@ -793,6 +849,10 @@ export function RunsPanel({
     [errors, setErrors] = useState<Record<string, string>>({}),
     [retry, setRetry] = useState(false),
     [retryPrompt, setRetryPrompt] = useState('');
+  const [retryCopyDraft, setRetryCopyDraft] = useState(() =>
+    workspaceCopyDraft(),
+  );
+  const retryCopyOptions = workspaceCopyOptions(retryCopyDraft);
   const scroll = useRef<HTMLDivElement>(null);
   const positions = useRef<Record<string, { top: number; pinned: boolean }>>(
     {},
@@ -1167,6 +1227,9 @@ export function RunsPanel({
                             disabled={!canRetry || busy}
                             onClick={() => {
                               setRetryPrompt(attempt?.prompt || stage.prompt);
+                              setRetryCopyDraft(
+                                workspaceCopyDraft(run.copyOptions),
+                              );
                               setRetry(true);
                             }}
                           >
@@ -1288,6 +1351,23 @@ export function RunsPanel({
                         )}
                       </TabsContent>
                       <TabsContent value="context" className="session-info-tab">
+                        {attempt.copyReport && (
+                          <details className="workspace-copy-settings">
+                            <summary>
+                              <span>Копия при создании попытки</span>
+                              <ChevronDown size={14} />
+                            </summary>
+                            <WorkspaceCopySummary
+                              report={attempt.copyReport}
+                              handoff={
+                                !!stage.generatedBy ||
+                                run.stages.findIndex(
+                                  (item) => item.id === stage.id,
+                                ) > 0
+                              }
+                            />
+                          </details>
+                        )}
                         <dl className="session-context">
                           {stage.generatedBy && (
                             <>
@@ -1451,6 +1531,9 @@ export function RunsPanel({
                               className="text-button"
                               onClick={() => {
                                 setRetryPrompt(attempt.prompt);
+                                setRetryCopyDraft(
+                                  workspaceCopyDraft(run.copyOptions),
+                                );
                                 setRetry(true);
                               }}
                             >
@@ -1595,21 +1678,50 @@ export function RunsPanel({
             Инструкция новой попытки
             <textarea
               value={retryPrompt}
+              disabled={busy}
               onChange={(e) => setRetryPrompt(e.target.value)}
               rows={9}
             />
           </label>
+          {run && stage && (
+            <WorkspaceCopySettings
+              draft={retryCopyDraft}
+              onChange={(draft) => {
+                setRetryCopyDraft(draft);
+                setError('');
+              }}
+              target={{ runId: run.id, stageId: stage.id }}
+              handoff={run.stages.findIndex((item) => item.id === stage.id) > 0}
+              available={!!runner.workspaceCopyAvailable}
+              online={runner.online}
+              disabled={busy}
+            />
+          )}
+          {runner.online && !runner.workspaceCopyAvailable && (
+            <p className="runner-error" role="alert">
+              Обновление копирования требует перезапуска локального исполнителя
+              после завершения текущих запусков и проверок.
+            </p>
+          )}
           {error && <div className="runner-error">{error}</div>}
           <button
             className="primary-button"
-            disabled={busy || !retryPrompt.trim()}
+            disabled={
+              busy ||
+              !runner.online ||
+              !runner.workspaceCopyAvailable ||
+              !retryCopyOptions ||
+              !retryPrompt.trim()
+            }
             onClick={async () => {
               if (
                 run &&
                 stage &&
+                retryCopyOptions &&
                 (await action(`/runs/${run.id}/retry`, {
                   stageId: stage.id,
                   prompt: retryPrompt,
+                  copyOptions: retryCopyOptions,
                 }))
               ) {
                 setRetry(false);

@@ -31,6 +31,8 @@ npm run test:runner
 npm run typecheck
 npm run lint
 npm run build
+npx playwright install chromium # Linux: add --with-deps
+npm run test:e2e
 ```
 
 Add behavior-focused regressions for orchestration, storage and access changes. Tests use fake Codex clients and temporary directories; paid model calls are not part of CI. For documentation-only changes, validate the changed links/content; for workflow or template changes, validate their syntax and let PR CI run the project checks. Do not add tests that only mirror text or implementation details.

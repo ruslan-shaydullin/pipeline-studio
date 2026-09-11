@@ -3,6 +3,7 @@ import tailwindcss from '@tailwindcss/postcss';
 import vinext from 'vinext';
 import { defineConfig } from 'vite';
 import hostingConfig from './.openai/hosting.json';
+import { localPorts } from './lib/local-config.mjs';
 
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   '00000000-0000-4000-8000-000000000000';
@@ -35,6 +36,7 @@ const localBindingConfig = {
 };
 
 export default defineConfig(async () => {
+  const ports = localPorts();
   // Keep Wrangler and Miniflare state project-local. These are non-secret tool
   // settings; application environment belongs in ignored `.env*` files.
   process.env.WRANGLER_WRITE_LOGS ??= 'false';
@@ -45,8 +47,13 @@ export default defineConfig(async () => {
   const { cloudflare } = await import('@cloudflare/vite-plugin');
 
   return {
+    // Keep optimized dependencies with this app's runtime, including isolated E2E copies.
+    // The node_modules segment also keeps CommonJS transforms off optimized ESM.
+    cacheDir: '.vinext/node_modules/.vite',
     css: { postcss: { plugins: [tailwindcss()] } },
     server: {
+      host: '127.0.0.1',
+      port: ports.web,
       strictPort: true,
       watch: {
         // Agent workspaces and runtime caches are not frontend source files.
@@ -61,7 +68,10 @@ export default defineConfig(async () => {
           : {}),
       },
       proxy: {
-        '/api/runner': { target: 'http://127.0.0.1:4317', changeOrigin: true },
+        '/api/runner': {
+          target: `http://127.0.0.1:${ports.runner}`,
+          changeOrigin: true,
+        },
       },
     },
     plugins: [

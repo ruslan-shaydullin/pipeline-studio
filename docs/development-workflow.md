@@ -14,9 +14,9 @@ Use the issue and PR templates to record enough information for another person t
 
 ## CI and review
 
-The required GitHub Actions job is **`check`** in [ci.yml](../.github/workflows/ci.yml). It installs the lockfile, runs the test suite, checks TypeScript, runs lint and builds the frontend on Ubuntu with Node 22. It runs for every PR and pushes to `main`. Superseded runs for the same PR or branch are cancelled.
+The required GitHub Actions job is **`check`** in [ci.yml](../.github/workflows/ci.yml). It installs the lockfile, runs the test suite, checks TypeScript, runs lint, builds the frontend and exercises Chromium user scenarios on Ubuntu with Node 22. It runs for every PR and pushes to `main`. Superseded runs for the same PR or branch are cancelled.
 
-CI uses synthetic data and fake Codex clients. It does not run a paid model, load a developer's Codex login or execute on a contributor's laptop. It currently does not provide browser E2E or live Codex protocol coverage. Record relevant manual checks in the PR; do not describe a successful build as a completed user-flow test.
+CI uses synthetic data and fake Codex clients. Browser E2E runs real local services and JSONL transport against a deterministic executor in temporary directories. It does not call a paid model, load a developer's Codex login or execute on a contributor's laptop. Failure traces and synthetic service logs are retained for seven days. Live Codex compatibility is checked separately and recorded in the release notes.
 
 Before merge, a maintainer examines the final diff, scope, compatibility notes and validation. Resolve actionable review conversations. For changes to the executor, check the [runtime invariants](architecture.md#invariants). Bring an outdated branch up to date and wait for checks on the updated result.
 
@@ -54,8 +54,8 @@ After merge, check the `main` CI result. Close a related issue only when its acc
 
 Track these as separate changes rather than treating the current checks as coverage they do not provide:
 
-1. Browser scenarios for continuation after reload and assistant apply/undo, using a fake executor and isolated data.
-2. Sanitized JSONL transport fixtures and explicit Codex-version smoke-test results.
-3. A first tagged release with installation, upgrade and data-recovery verification.
+1. Browser coverage for multiple tabs, dynamic stage creation and additional browser engines.
+2. Versioned transport contract fixtures for a broader range of supported Codex CLI versions.
+3. Repeatable upgrade fixtures when the first persisted-format migration is introduced.
 
 Keep the workflow small enough that a contributor can make one focused improvement without learning a separate process framework.

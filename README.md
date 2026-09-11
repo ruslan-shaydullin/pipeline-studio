@@ -4,7 +4,7 @@ A local web workspace for repeatable jobs made of independent Codex sessions. De
 
 English · [Русский](README.ru.md)
 
-**Early prototype.** The interface is currently in Russian. Execution runs on your computer through Codex CLI; this is a single-user tool, not a hosted service.
+**First public preview: [v0.1.0](https://github.com/ruslan-shaydullin/pipeline-studio/releases/tag/v0.1.0).** The interface is currently in Russian. Execution runs on your computer through Codex CLI; this is a single-user tool, not a hosted service.
 
 ## What works
 
@@ -19,7 +19,7 @@ English · [Русский](README.ru.md)
 
 ## Quick start
 
-Requirements: Node.js **22.13+**, npm, Git, and an authenticated [Codex CLI](https://developers.openai.com/codex/cli). The adapter has been checked with `codex-cli 0.153.4`. macOS is the primary tested platform; Linux is covered by CI for installation, tests and build. Other platforms and CLI versions may need integration work.
+Requirements: Node.js **22.13+**, npm, Git, and an authenticated [Codex CLI](https://developers.openai.com/codex/cli). The adapter has been checked with `codex-cli 0.153.4`. macOS is the primary tested platform; Linux is covered by CI for installation, tests, build and Chromium user scenarios. Other platforms and CLI versions may need integration work.
 
 ```sh
 git clone https://github.com/ruslan-shaydullin/pipeline-studio.git
@@ -63,11 +63,11 @@ The assistant reviews supplied instructions and result summaries; it does not ve
 
 Choose **«Доступ»** in the header to set the job's default. All stages, including generated ones, inherit it. The launch form allows an override for one run.
 
-| Profile | Writes | Network | Technical approvals |
-| --- | --- | --- | --- |
-| **С подтверждениями** (default) | Working directory | On request | Requested when needed |
-| **Рабочая папка + сеть** | Working directory | Enabled | Required outside sandbox permissions |
-| **Полный доступ** | No Codex sandbox restriction | Enabled | Disabled |
+| Profile                         | Writes                       | Network    | Technical approvals                  |
+| ------------------------------- | ---------------------------- | ---------- | ------------------------------------ |
+| **С подтверждениями** (default) | Working directory            | On request | Requested when needed                |
+| **Рабочая папка + сеть**        | Working directory            | Enabled    | Required outside sandbox permissions |
+| **Полный доступ**               | No Codex sandbox restriction | Enabled    | Disabled                             |
 
 Workspace profiles restrict writes, not all reads; Codex's read-access policy still applies. Full access runs with your OS user's permissions and can access files outside the working copy. Use it for trusted tasks and prompts. Host or administrator policies can still restrict execution. Questions about requirements remain interactive in every profile: disabling technical approvals does not answer business decisions or expand task scope.
 
@@ -86,11 +86,12 @@ Source copying excludes Git metadata, dependencies, build output, local `.env` f
 
 Optional environment variables:
 
-| Variable | Purpose |
-| --- | --- |
-| `PIPELINE_CODEX_BIN` | Path to the Codex executable |
-| `PIPELINE_DATA_DIR` | Data directory; defaults to `.pipeline-data` |
-| `PIPELINE_PORT` | Runner port; changing it also requires updating the Vite proxy |
+| Variable             | Purpose                                                             |
+| -------------------- | ------------------------------------------------------------------- |
+| `PIPELINE_CODEX_BIN` | Path to the Codex executable                                        |
+| `PIPELINE_DATA_DIR`  | Data directory; defaults to `.pipeline-data`                        |
+| `PIPELINE_PORT`      | Runner port (default `4317`); the proxy follows automatically       |
+| `PIPELINE_WEB_PORT`  | Web port (default `3000`); local origin checks follow automatically |
 
 Keep the runner local. It has no multi-user authentication and is not designed to be exposed to a network.
 
@@ -101,7 +102,11 @@ npm run test:runner
 npm run typecheck
 npm run lint
 npm run build
+npx playwright install chromium # Linux: add --with-deps
+npm run test:e2e
 ```
+
+Browser scenarios use the real interface, HTTP/SSE, storage and JSONL transport with a deterministic fake Codex process. They cover continuation after restart, questions, retries and assistant apply/undo. They use temporary source copies, free loopback ports and synthetic data; no Codex account or running local app is needed. See [browser tests](tests/e2e/README.md).
 
 Tests use a fake Codex client and temporary data directories: no account, paid model calls or personal jobs are needed. CI runs the same checks. `examples/issue-lab` intentionally contains failing tests until an agent fixes its isolated copy; it is not part of the application test suite.
 

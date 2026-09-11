@@ -560,6 +560,7 @@ export default function Home() {
           <SidebarContent className="navigation-content">
             <button
               className="new-pipeline-button"
+              disabled={locked}
               onClick={() => openCreate('pipeline', folder.id)}
             >
               <Plus size={17} />
@@ -766,7 +767,7 @@ export default function Home() {
                       <button
                         className="primary-button"
                         onClick={startRun}
-                        disabled={!pipeline.stages.length}
+                        disabled={locked || !pipeline.stages.length}
                       >
                         <Play size={14} fill="currentColor" />
                         {continuation ? 'Продолжить' : 'Новый запуск'}
@@ -793,7 +794,7 @@ export default function Home() {
                   <button
                     className="primary-button session-launch-button"
                     onClick={startRun}
-                    disabled={!pipeline.stages.length}
+                    disabled={locked || !pipeline.stages.length}
                   >
                     <Play size={14} fill="currentColor" />{' '}
                     {continuation ? 'Продолжить' : 'Новый запуск'}
